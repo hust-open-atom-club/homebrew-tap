@@ -24,9 +24,11 @@ jobs:
       - uses: Homebrew/actions/setup-homebrew@master
       - name: Check tap syntax
         run: brew test-bot --only-tap-syntax
+      - name: Tap checkout
+        run: brew tap hust-open-atom-club/tap "$GITHUB_WORKSPACE"
       - name: Install formula
-        run: brew install --formula ./Formula/atomgit-cli.rb
+        run: brew install hust-open-atom-club/tap/atomgit-cli
       - name: Test formula
-        run: brew test atomgit-cli
+        run: brew test hust-open-atom-club/tap/atomgit-cli
       - name: Verify executable
         run: ag version
