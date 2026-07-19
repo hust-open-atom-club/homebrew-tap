@@ -1,0 +1,32 @@
+name: Test Formula
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Homebrew/actions/setup-homebrew@master
+      - name: Check tap syntax
+        run: brew test-bot --only-tap-syntax
+      - name: Install formula
+        run: brew install --formula ./Formula/atomgit-cli.rb
+      - name: Test formula
+        run: brew test atomgit-cli
+      - name: Verify executable
+        run: ag version
