@@ -1,26 +1,26 @@
 class AtomgitCli < Formula
   desc "Command-line interface for AtomGit"
   homepage "https://atomgit.com/hust-open-atom-club/atomgit-cli"
-  version "0.6.0"
+  version "0.7.1"
   license "MulanPSL-2.0"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.6.0/ag_darwin_arm64.tar.gz"
-      sha256 "9810381a0a6ab7d7f277d2be114f79d5d98c42478121f7a057fac093f3e45f99"
+      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.7.1/ag_darwin_arm64.tar.gz"
+      sha256 "3bd43232bc6bce6069fc25795a7fd12a6ab6a6f5bb067381fe908486bd68cddd"
     else
-      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.6.0/ag_darwin_amd64.tar.gz"
-      sha256 "f26d386cc79a298592d2fc32142d2d5b409fd96e700266d34dcfc1acbc97d0c6"
+      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.7.1/ag_darwin_amd64.tar.gz"
+      sha256 "e18a4597fbd9f792c701b64d7e3220cfbf004904ad5db8cc08f6aa2d0228b2df"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.6.0/ag_linux_arm64.tar.gz"
-      sha256 "6300f78df686d612a564551dfa48341a9e893bba1ccd6faab2eea13c017dbdfd"
+      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.7.1/ag_linux_arm64.tar.gz"
+      sha256 "af13a9637e814f17e306a637073202d4b27460f6c2f0aa7b0eb41be8153a5dc6"
     else
-      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.6.0/ag_linux_amd64.tar.gz"
-      sha256 "4c36f57c74bd8e0d5aca0a9dc90e7840c069482078d13bd8c13c72ca2a1b5865"
+      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.7.1/ag_linux_amd64.tar.gz"
+      sha256 "357190d45e3c13cfaa49ac0bff96f6c2d71bc60cfd6702a26a3308a630bac83a"
     end
   end
 
