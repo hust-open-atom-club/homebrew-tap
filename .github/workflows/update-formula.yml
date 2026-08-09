@@ -57,6 +57,9 @@ jobs:
           branch="automation/update-atomgit-cli-v${VERSION}"
           title="chore: update atomgit-cli to v${VERSION}"
 
+          # Ensure Git uses this step's GITHUB_TOKEN even if checkout's
+          # temporary credentials are unavailable.
+          gh auth setup-git --hostname github.com --force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
