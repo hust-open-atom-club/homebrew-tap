@@ -7,6 +7,7 @@ on:
     - cron: "20 */4 * * *"
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -17,7 +18,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -66,25 +67,60 @@ jobs:
           git add Formula/atomgit-cli.rb
           git commit -m "$title"
 
-          existing_pr="$(gh pr list --head "$branch" --state all --json number --jq '.[0].number // empty')"
+          existing_pr="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
           if [[ -n "$existing_pr" ]]; then
-            echo "Pull request #${existing_pr} already exists"
-            exit 0
-          fi
-
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            git fetch origin "refs/heads/${branch}:refs/remotes/origin/${branch}"
-            if ! git diff --quiet "origin/${branch}" HEAD -- Formula/atomgit-cli.rb; then
-              echo "Remote branch ${branch} contains unexpected Formula content" >&2
-              exit 1
-            fi
-            echo "Remote branch ${branch} already exists; creating its pull request"
+            echo "Reusing pull request #${existing_pr}"
+            pr_url="$(gh pr view "$existing_pr" --json url --jq '.url')"
+            head_sha="$(gh pr view "$existing_pr" --json headRefOid --jq '.headRefOid')"
           else
-            git push origin "HEAD:refs/heads/${branch}"
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              git fetch origin "refs/heads/${branch}:refs/remotes/origin/${branch}"
+              if ! git diff --quiet "origin/${branch}" HEAD -- Formula/atomgit-cli.rb; then
+                echo "Remote branch ${branch} contains unexpected Formula content" >&2
+                exit 1
+              fi
+              echo "Remote branch ${branch} already exists; creating its pull request"
+            else
+              git push origin "HEAD:refs/heads/${branch}"
+            fi
+
+            body="$(printf '%s\n\n%s\n%s\n%s\n' \
+              'Automated update from the latest stable AtomGit release.' \
+              '- Updated the Formula version and all four platform URLs.' \
+              '- Downloaded every release archive and recalculated its SHA-256.' \
+              '- Automatically squash-merges after the macOS and Linux CI passes.')"
+            pr_url="$(gh pr create --base main --head "$branch" --title "$title" --body "$body")"
+            head_sha="$(gh pr view "$pr_url" --json headRefOid --jq '.headRefOid')"
           fi
 
-          body="$(printf '%s\n\n%s\n%s\n' \
-            'Automated update from the latest stable AtomGit release.' \
-            '- Updated the Formula version and all four platform URLs.' \
-            '- Downloaded every release archive and recalculated its SHA-256.')"
-          gh pr create --base main --head "$branch" --title "$title" --body "$body"
+          changed_files="$(gh pr diff "$pr_url" --name-only)"
+          if [[ "$changed_files" != "Formula/atomgit-cli.rb" ]]; then
+            echo "Refusing to merge a PR that changes files other than the Formula" >&2
+            printf '%s\n' "$changed_files" >&2
+            exit 1
+          fi
+
+          gh workflow run test.yml --ref "$branch"
+
+          run_id=""
+          for _ in {1..30}; do
+            run_id="$(gh run list \
+              --workflow test.yml \
+              --commit "$head_sha" \
+              --event workflow_dispatch \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty')"
+            [[ -n "$run_id" ]] && break
+            sleep 2
+          done
+          if [[ -z "$run_id" ]]; then
+            echo "Timed out waiting for the Formula CI run to start" >&2
+            exit 1
+          fi
+
+          gh run watch "$run_id" --exit-status
+          gh pr merge "$pr_url" \
+            --squash \
+            --delete-branch \
+            --match-head-commit "$head_sha"
