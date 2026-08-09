@@ -45,7 +45,7 @@ The Formula installs checksum-verified binaries from the official [AtomGit relea
 
 ## Maintainers
 
-The [`Update atomgit-cli Formula`](.github/workflows/update-formula.yml) workflow checks the latest stable AtomGit release every four hours and can also be run manually. It downloads all four platform archives, recalculates their SHA-256 values, updates [`Formula/atomgit-cli.rb`](Formula/atomgit-cli.rb), and opens a pull request.
+The [`Update atomgit-cli Formula`](.github/workflows/update-formula.yml) workflow checks the latest stable AtomGit release every four hours and can also be run manually. It downloads all four platform archives, recalculates their SHA-256 values, updates [`Formula/atomgit-cli.rb`](Formula/atomgit-cli.rb), and opens a pull request. The workflow dispatches the Formula test matrix and automatically squash-merges the pull request after the macOS and Linux jobs pass.
 
 Pull requests created by GitHub Actions must be enabled in the repository's Actions settings. The regular Formula test workflow validates automated update pull requests on macOS and Linux.
 
