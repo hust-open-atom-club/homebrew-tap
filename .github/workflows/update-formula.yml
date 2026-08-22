@@ -40,13 +40,15 @@ jobs:
 
           version="$(ruby -ne 'puts Regexp.last_match(1) if /^\s*version "([^"]+)"/' Formula/atomgit-cli.rb)"
           commit="$(ruby -ne 'puts Regexp.last_match(1) if /^\s*revision: "([0-9a-f]{40})"/' Formula/atomgit-cli.rb)"
-          if git diff --quiet -- Formula/atomgit-cli.rb; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "version=$version" >> "$GITHUB_OUTPUT"
-            echo "commit=$commit" >> "$GITHUB_OUTPUT"
-          fi
+          {
+            if git diff --quiet -- Formula/atomgit-cli.rb; then
+              echo "changed=false"
+            else
+              echo "changed=true"
+              echo "version=$version"
+              echo "commit=$commit"
+            fi
+          } >> "$GITHUB_OUTPUT"
 
       - name: Validate Formula syntax and style
         if: steps.update.outputs.changed == 'true'
