@@ -3,8 +3,8 @@ name: Update atomgit-cli Formula
 on:
   workflow_dispatch:
   schedule:
-    # Match the Scoop bucket cadence while avoiding the top of the hour.
-    - cron: "20 */4 * * *"
+    # Check hourly while avoiding the busiest time at the top of the hour.
+    - cron: "20 * * * *"
 
 permissions:
   actions: write
@@ -28,6 +28,9 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c
 
+      - name: Test Formula updater
+        run: python3 -m unittest discover -s tests
+
       - name: Update Formula metadata
         id: update
         shell: bash
@@ -36,11 +39,13 @@ jobs:
           python3 scripts/update_formula.py
 
           version="$(ruby -ne 'puts Regexp.last_match(1) if /^\s*version "([^"]+)"/' Formula/atomgit-cli.rb)"
+          commit="$(ruby -ne 'puts Regexp.last_match(1) if /^\s*revision: "([0-9a-f]{40})"/' Formula/atomgit-cli.rb)"
           if git diff --quiet -- Formula/atomgit-cli.rb; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "commit=$commit" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Validate Formula syntax and style
@@ -52,11 +57,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.update.outputs.version }}
+          COMMIT: ${{ steps.update.outputs.commit }}
         shell: bash
         run: |
           set -euo pipefail
-          branch="automation/update-atomgit-cli-v${VERSION}"
-          title="chore: update atomgit-cli to v${VERSION}"
+          short_commit="${COMMIT:0:12}"
+          branch="automation/update-atomgit-cli-${short_commit}"
+          title="chore: update atomgit-cli to ${short_commit}"
 
           # Ensure Git uses this step's GITHUB_TOKEN even if checkout's
           # temporary credentials are unavailable.
@@ -85,9 +92,9 @@ jobs:
             fi
 
             body="$(printf '%s\n\n%s\n%s\n%s\n' \
-              'Automated update from the latest stable AtomGit release.' \
-              '- Updated the Formula version and all four platform URLs.' \
-              '- Downloaded every release archive and recalculated its SHA-256.' \
+              'Automated update from the latest AtomGit main commit.' \
+              "- Pinned the Formula to commit \`${COMMIT}\`." \
+              "- Updated the development version to \`${VERSION}\`." \
               '- Automatically squash-merges after the macOS and Linux CI passes.')"
             pr_url="$(gh pr create --base main --head "$branch" --title "$title" --body "$body")"
             head_sha="$(gh pr view "$pr_url" --json headRefOid --jq '.headRefOid')"
