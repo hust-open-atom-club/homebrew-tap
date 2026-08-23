@@ -12,7 +12,6 @@ class AtomgitCli < Formula
     ldflags = %W[
       -X atomgit.com/hust-open-atom-club/atomgit-cli/internal/version.Version=#{version}
       -X atomgit.com/hust-open-atom-club/atomgit-cli/internal/version.Commit=#{stable.specs[:revision]}
-      -X atomgit.com/hust-open-atom-club/atomgit-cli/internal/version.Source=homebrew
     ]
     system "go", "build", *std_go_args(ldflags:, output: bin/"ag"), "./cmd/ag"
   end
