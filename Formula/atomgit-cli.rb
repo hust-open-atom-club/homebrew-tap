@@ -1,34 +1,27 @@
 class AtomgitCli < Formula
   desc "Command-line interface for AtomGit"
   homepage "https://atomgit.com/hust-open-atom-club/atomgit-cli"
-  version "0.7.2"
+  url "https://atomgit.com/hust-open-atom-club/atomgit-cli.git",
+      revision: "db67692448b416e86ffadd33e59b333c6909447e"
+  version "0.7.3-0.20260821123630-db67692448b4"
   license "MulanPSL-2.0"
 
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.7.2/ag_darwin_arm64.tar.gz"
-      sha256 "7c3313d853a51031eb0cf7c0f7c5a61809689fac29b3ba2ac578d63036e901b5"
-    else
-      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.7.2/ag_darwin_amd64.tar.gz"
-      sha256 "601983b23c5f99f89a8a7735e86ed4bee8a74dbd11e1c78d038ecfef85e1d30c"
-    end
-  end
-
-  on_linux do
-    if Hardware::CPU.arm?
-      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.7.2/ag_linux_arm64.tar.gz"
-      sha256 "8933a84d566fc523c4aaf8ec69bc46b6a9edcc020fd027040ec249274ad470b0"
-    else
-      url "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download/v0.7.2/ag_linux_amd64.tar.gz"
-      sha256 "065ade926a8ff44547f78eb48389b18c054edc624fbd533db71e0207f3a9a6f7"
-    end
-  end
+  depends_on "go" => :build
 
   def install
-    bin.install "ag"
+    ldflags = %W[
+      -X atomgit.com/hust-open-atom-club/atomgit-cli/internal/version.Version=#{version}
+      -X atomgit.com/hust-open-atom-club/atomgit-cli/internal/version.Commit=#{stable.specs[:revision]}
+    ]
+    system "go", "build", *std_go_args(ldflags:, output: bin/"ag"), "./cmd/ag"
   end
 
   test do
-    assert_match "v#{version}", shell_output("#{bin}/ag version")
+    assert_match version.to_s, shell_output("#{bin}/ag version")
+
+    system bin/"ag", "alias", "set", "rv", "repo", "view"
+    aliases = shell_output("#{bin}/ag alias list")
+    assert_match "rv", aliases
+    assert_match "repo view", aliases
   end
 end

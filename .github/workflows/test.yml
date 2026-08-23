@@ -22,6 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c
+      - name: Test Formula updater
+        run: python3 -m unittest discover -s tests
       - name: Check tap syntax
         run: brew test-bot --only-tap-syntax
       - name: Install formula

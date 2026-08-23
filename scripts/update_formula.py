@@ -1,107 +1,179 @@
 #!/usr/bin/env python3
-"""Update the atomgit-cli Formula from the latest stable AtomGit release."""
+"""Pin the atomgit-cli Formula to the latest AtomGit main commit."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
+from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import re
-import tarfile
 import tempfile
 from typing import Final
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-RELEASE_API: Final = (
+API_ROOT: Final = (
     "https://api.atomgit.com/api/v5/repos/"
-    "hust-open-atom-club/atomgit-cli/releases/latest"
+    "hust-open-atom-club/atomgit-cli"
 )
-DOWNLOAD_ROOT: Final = (
-    "https://atomgit.com/hust-open-atom-club/atomgit-cli/releases/download"
+RELEASE_API: Final = f"{API_ROOT}/releases/latest"
+COMMIT_API: Final = f"{API_ROOT}/commits/main"
+RELEASE_VERSION_RE: Final = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+SNAPSHOT_VERSION_RE: Final = re.compile(
+    r"^(\d+)\.(\d+)\.(\d+)-0\.(\d{14})(?:\.(\d+))?-([0-9a-f]{12})$"
 )
-ASSETS: Final = (
-    "ag_darwin_arm64.tar.gz",
-    "ag_darwin_amd64.tar.gz",
-    "ag_linux_arm64.tar.gz",
-    "ag_linux_amd64.tar.gz",
+FORMULA_VERSION_RE: Final = re.compile(
+    r'^(\s*version ")([^"]+)("\s*)$', re.MULTILINE
 )
-VERSION_RE: Final = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
-FORMULA_VERSION_RE: Final = re.compile(r'^(\s*version ")([^"]+)("\s*)$', re.MULTILINE)
-SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
-USER_AGENT: Final = "homebrew-tap-atomgit-cli-updater/1.0"
+FORMULA_REVISION_RE: Final = re.compile(
+    r'^(\s*revision: ")[0-9a-f]{40}("\s*)$', re.MULTILINE
+)
+COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
+USER_AGENT: Final = "homebrew-tap-atomgit-cli-updater/2.0"
 
 
 class UpdateError(RuntimeError):
-    """Raised when release metadata or artifacts are unsafe to apply."""
+    """Raised when upstream metadata is unsafe to apply."""
 
 
-def request_bytes(url: str) -> bytes:
+def request_json(url: str) -> object:
     request = Request(
         url,
         headers={"Accept": "application/json", "User-Agent": USER_AGENT},
     )
     try:
         with urlopen(request, timeout=60) as response:
-            return response.read()
-    except (HTTPError, URLError, TimeoutError) as error:
-        raise UpdateError(f"failed to download {url}: {error}") from error
+            return json.load(response)
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise UpdateError(f"failed to read JSON from {url}: {error}") from error
 
 
-def latest_version(api_url: str) -> tuple[str, tuple[int, int, int]]:
-    try:
-        release = json.loads(request_bytes(api_url))
-    except json.JSONDecodeError as error:
-        raise UpdateError("latest release API returned invalid JSON") from error
-
+def latest_release_version(url: str) -> tuple[int, int, int]:
+    release = request_json(url)
     tag = release.get("tag_name") if isinstance(release, dict) else None
-    if not isinstance(tag, str) or (match := VERSION_RE.fullmatch(tag)) is None:
+    if not isinstance(tag, str) or (match := RELEASE_VERSION_RE.fullmatch(tag)) is None:
         raise UpdateError(f"unexpected latest release tag: {tag!r}")
-
-    return tag, tuple(int(part) for part in match.groups())
-
-
-def current_version(formula: str) -> tuple[str, tuple[int, int, int]]:
-    matches = list(FORMULA_VERSION_RE.finditer(formula))
-    if len(matches) != 1:
-        raise UpdateError(f"expected one Formula version, found {len(matches)}")
-
-    version = matches[0].group(2)
-    match = VERSION_RE.fullmatch(f"v{version}")
-    if match is None:
-        raise UpdateError(f"unexpected Formula version: {version!r}")
-
-    return version, tuple(int(part) for part in match.groups())
+    return tuple(int(part) for part in match.groups())
 
 
-def download_and_hash(tag: str, asset: str) -> str:
-    url = f"{DOWNLOAD_ROOT}/{tag}/{asset}"
-    digest = hashlib.sha256()
+def latest_main_commit(url: str) -> tuple[str, datetime]:
+    commit = request_json(url)
+    if not isinstance(commit, dict):
+        raise UpdateError("latest main commit API returned a non-object")
 
-    request = Request(url, headers={"User-Agent": USER_AGENT})
+    sha = commit.get("sha")
+    commit_data = commit.get("commit")
+    committer = commit_data.get("committer") if isinstance(commit_data, dict) else None
+    committed_at = committer.get("date") if isinstance(committer, dict) else None
+
+    if not isinstance(sha, str) or COMMIT_RE.fullmatch(sha) is None:
+        raise UpdateError(f"unexpected main commit SHA: {sha!r}")
+    if not isinstance(committed_at, str):
+        raise UpdateError(f"unexpected main commit date: {committed_at!r}")
+
     try:
-        with urlopen(request, timeout=120) as response, tempfile.NamedTemporaryFile() as archive:
-            while chunk := response.read(1024 * 1024):
-                digest.update(chunk)
-                archive.write(chunk)
-            archive.flush()
+        timestamp = datetime.fromisoformat(committed_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise UpdateError(f"unexpected main commit date: {committed_at!r}") from error
+    if timestamp.tzinfo is None:
+        raise UpdateError(f"main commit date has no timezone: {committed_at!r}")
+    return sha, timestamp.astimezone(timezone.utc)
 
-            try:
-                with tarfile.open(archive.name, mode="r:gz") as tar:
-                    if not any(PurePosixPath(member.name).name == "ag" for member in tar):
-                        raise UpdateError(f"{asset} does not contain the ag executable")
-            except tarfile.TarError as error:
-                raise UpdateError(f"{asset} is not a valid tar.gz archive") from error
-    except (HTTPError, URLError, TimeoutError) as error:
-        raise UpdateError(f"failed to download {url}: {error}") from error
 
-    checksum = digest.hexdigest()
-    if SHA256_RE.fullmatch(checksum) is None:
-        raise UpdateError(f"failed to calculate SHA-256 for {asset}")
-    return checksum
+def snapshot_version(
+    release: tuple[int, int, int],
+    commit: str,
+    committed_at: datetime,
+    sequence: int = 0,
+) -> str:
+    if sequence < 0:
+        raise UpdateError("snapshot sequence cannot be negative")
+    major, minor, patch = release
+    timestamp = committed_at.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S")
+    sequence_suffix = f".{sequence}" if sequence else ""
+    return (
+        f"{major}.{minor}.{patch + 1}-0.{timestamp}"
+        f"{sequence_suffix}-{commit[:12]}"
+    )
+
+
+def current_snapshot(
+    formula: str,
+) -> tuple[str, str, tuple[int, int, int], datetime, int]:
+    version_matches = list(FORMULA_VERSION_RE.finditer(formula))
+    revision_matches = list(FORMULA_REVISION_RE.finditer(formula))
+    if len(version_matches) != 1:
+        raise UpdateError(f"expected one Formula version, found {len(version_matches)}")
+    if len(revision_matches) != 1:
+        raise UpdateError(
+            f"expected one Formula Git revision, found {len(revision_matches)}"
+        )
+
+    version = version_matches[0].group(2)
+    revision_line = revision_matches[0].group(0)
+    revision_match = re.search(r"[0-9a-f]{40}", revision_line)
+    if revision_match is None:
+        raise UpdateError("Formula Git revision is malformed")
+    revision = revision_match.group(0)
+
+    match = SNAPSHOT_VERSION_RE.fullmatch(version)
+    if match is None:
+        raise UpdateError(f"unexpected Formula snapshot version: {version!r}")
+    if match.group(6) != revision[:12]:
+        raise UpdateError("Formula version and Git revision do not match")
+
+    major, minor, next_patch = (int(match.group(index)) for index in range(1, 4))
+    if next_patch == 0:
+        raise UpdateError("Formula snapshot patch must be greater than zero")
+    release = (major, minor, next_patch - 1)
+    timestamp = datetime.strptime(match.group(4), "%Y%m%d%H%M%S").replace(
+        tzinfo=timezone.utc
+    )
+    sequence = int(match.group(5) or 0)
+    return version, revision, release, timestamp, sequence
+
+
+def next_snapshot_sequence(
+    old_release: tuple[int, int, int],
+    old_timestamp: datetime,
+    old_sequence: int,
+    release: tuple[int, int, int],
+    committed_at: datetime,
+) -> int:
+    if release == old_release and committed_at == old_timestamp:
+        return old_sequence + 1
+    return 0
+
+
+def snapshot_order(
+    release: tuple[int, int, int], committed_at: datetime, sequence: int
+) -> tuple[int, int, int, datetime, int]:
+    major, minor, patch = release
+    return major, minor, patch + 1, committed_at, sequence
+
+
+def validate_update(
+    old_release: tuple[int, int, int],
+    old_revision: str,
+    old_timestamp: datetime,
+    release: tuple[int, int, int],
+    revision: str,
+    committed_at: datetime,
+) -> None:
+    if release < old_release:
+        old_tag = ".".join(str(part) for part in old_release)
+        new_tag = ".".join(str(part) for part in release)
+        raise UpdateError(
+            f"refusing to move latest release from v{old_tag} back to v{new_tag}"
+        )
+    if committed_at < old_timestamp:
+        raise UpdateError(
+            f"refusing to move Formula from {old_revision[:12]} "
+            f"back to {revision[:12]}"
+        )
 
 
 def replace_once(
@@ -113,36 +185,19 @@ def replace_once(
     return updated
 
 
-def update_formula(formula: str, version: str, checksums: dict[str, str]) -> str:
+def update_formula(formula: str, version: str, revision: str) -> str:
     formula = replace_once(
         formula,
         FORMULA_VERSION_RE,
         rf'\g<1>{version}\g<3>',
         "Formula version declaration",
     )
-
-    for asset, checksum in checksums.items():
-        url_pattern = re.compile(
-            rf"(releases/download/)v[^/]+(/{re.escape(asset)})"
-        )
-        formula = replace_once(
-            formula,
-            url_pattern,
-            rf"\g<1>v{version}\g<2>",
-            f"URL for {asset}",
-        )
-
-        checksum_pattern = re.compile(
-            rf'(url "[^"]+/{re.escape(asset)}"\n\s*sha256 ")[0-9a-f]{{64}}(")'
-        )
-        formula = replace_once(
-            formula,
-            checksum_pattern,
-            rf"\g<1>{checksum}\g<2>",
-            f"SHA-256 for {asset}",
-        )
-
-    return formula
+    return replace_once(
+        formula,
+        FORMULA_REVISION_RE,
+        rf'\g<1>{revision}\g<2>',
+        "Formula Git revision",
+    )
 
 
 def write_atomically(path: Path, content: str) -> None:
@@ -161,26 +216,54 @@ def main() -> int:
     parser.add_argument(
         "--formula", type=Path, default=Path("Formula/atomgit-cli.rb")
     )
-    parser.add_argument("--api-url", default=RELEASE_API)
+    parser.add_argument("--release-api-url", default=RELEASE_API)
+    parser.add_argument("--commit-api-url", default=COMMIT_API)
     args = parser.parse_args()
 
     formula = args.formula.read_text(encoding="utf-8")
-    old_version, old_version_parts = current_version(formula)
-    tag, new_version_parts = latest_version(args.api_url)
-    new_version = tag.removeprefix("v")
+    (
+        old_version,
+        old_revision,
+        old_release,
+        old_timestamp,
+        old_sequence,
+    ) = current_snapshot(formula)
+    release = latest_release_version(args.release_api_url)
+    revision, committed_at = latest_main_commit(args.commit_api_url)
 
-    if new_version_parts < old_version_parts:
-        raise UpdateError(
-            f"refusing to downgrade Formula from {old_version} to {new_version}"
-        )
-    if new_version_parts == old_version_parts:
-        print(f"atomgit-cli {old_version} is already current")
+    validate_update(
+        old_release,
+        old_revision,
+        old_timestamp,
+        release,
+        revision,
+        committed_at,
+    )
+    if revision == old_revision and release == old_release:
+        print(f"atomgit-cli {old_version} already tracks {old_revision[:12]}")
         return 0
 
-    checksums = {asset: download_and_hash(tag, asset) for asset in ASSETS}
-    updated = update_formula(formula, new_version, checksums)
+    sequence = next_snapshot_sequence(
+        old_release,
+        old_timestamp,
+        old_sequence,
+        release,
+        committed_at,
+    )
+    new_version = snapshot_version(release, revision, committed_at, sequence)
+    if snapshot_order(release, committed_at, sequence) <= snapshot_order(
+        old_release, old_timestamp, old_sequence
+    ):
+        raise UpdateError(
+            f"refusing to replace Formula version {old_version} with {new_version}"
+        )
+
+    updated = update_formula(formula, new_version, revision)
     write_atomically(args.formula, updated)
-    print(f"updated atomgit-cli Formula from {old_version} to {new_version}")
+    print(
+        f"updated atomgit-cli from {old_revision[:12]} to {revision[:12]} "
+        f"({new_version})"
+    )
     return 0
 
 
