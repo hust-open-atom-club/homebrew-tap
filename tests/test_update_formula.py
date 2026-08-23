@@ -35,12 +35,45 @@ class UpdateFormulaTest(unittest.TestCase):
         self.assertEqual("0.7.3-0.20260821203630-db67692448b4", version)
 
     def test_current_snapshot_validates_revision(self) -> None:
-        version, revision, timestamp = update_formula.current_snapshot(self.formula)
+        version, revision, release, timestamp = update_formula.current_snapshot(
+            self.formula
+        )
 
         self.assertEqual(self.version, version)
         self.assertEqual(self.revision, revision)
+        self.assertEqual((0, 7, 2), release)
         self.assertEqual(
             datetime(2026, 8, 21, 12, 36, 30, tzinfo=timezone.utc),
+            timestamp,
+        )
+
+    def test_validate_update_rejects_release_downgrade(self) -> None:
+        old_timestamp = datetime(2026, 8, 21, tzinfo=timezone.utc)
+        newer_timestamp = datetime(2026, 8, 22, tzinfo=timezone.utc)
+        newer_revision = "0123456789abcdef0123456789abcdef01234567"
+
+        with self.assertRaisesRegex(
+            update_formula.UpdateError,
+            "latest release from v0.7.2 back to v0.7.1",
+        ):
+            update_formula.validate_update(
+                (0, 7, 2),
+                self.revision,
+                old_timestamp,
+                (0, 7, 1),
+                newer_revision,
+                newer_timestamp,
+            )
+
+    def test_validate_update_allows_new_release_on_same_commit(self) -> None:
+        timestamp = datetime(2026, 8, 21, tzinfo=timezone.utc)
+
+        update_formula.validate_update(
+            (0, 7, 2),
+            self.revision,
+            timestamp,
+            (0, 8, 0),
+            self.revision,
             timestamp,
         )
 

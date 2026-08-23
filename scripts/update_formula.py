@@ -91,7 +91,9 @@ def snapshot_version(
     return f"{major}.{minor}.{patch + 1}-0.{timestamp}-{commit[:12]}"
 
 
-def current_snapshot(formula: str) -> tuple[str, str, datetime]:
+def current_snapshot(
+    formula: str,
+) -> tuple[str, str, tuple[int, int, int], datetime]:
     version_matches = list(FORMULA_VERSION_RE.finditer(formula))
     revision_matches = list(FORMULA_REVISION_RE.finditer(formula))
     if len(version_matches) != 1:
@@ -114,10 +116,35 @@ def current_snapshot(formula: str) -> tuple[str, str, datetime]:
     if match.group(5) != revision[:12]:
         raise UpdateError("Formula version and Git revision do not match")
 
+    major, minor, next_patch = (int(match.group(index)) for index in range(1, 4))
+    if next_patch == 0:
+        raise UpdateError("Formula snapshot patch must be greater than zero")
+    release = (major, minor, next_patch - 1)
     timestamp = datetime.strptime(match.group(4), "%Y%m%d%H%M%S").replace(
         tzinfo=timezone.utc
     )
-    return version, revision, timestamp
+    return version, revision, release, timestamp
+
+
+def validate_update(
+    old_release: tuple[int, int, int],
+    old_revision: str,
+    old_timestamp: datetime,
+    release: tuple[int, int, int],
+    revision: str,
+    committed_at: datetime,
+) -> None:
+    if release < old_release:
+        old_tag = ".".join(str(part) for part in old_release)
+        new_tag = ".".join(str(part) for part in release)
+        raise UpdateError(
+            f"refusing to move latest release from v{old_tag} back to v{new_tag}"
+        )
+    if committed_at < old_timestamp:
+        raise UpdateError(
+            f"refusing to move Formula from {old_revision[:12]} "
+            f"back to {revision[:12]}"
+        )
 
 
 def replace_once(
@@ -165,19 +192,22 @@ def main() -> int:
     args = parser.parse_args()
 
     formula = args.formula.read_text(encoding="utf-8")
-    old_version, old_revision, old_timestamp = current_snapshot(formula)
+    old_version, old_revision, old_release, old_timestamp = current_snapshot(formula)
     release = latest_release_version(args.release_api_url)
     revision, committed_at = latest_main_commit(args.commit_api_url)
     new_version = snapshot_version(release, revision, committed_at)
 
+    validate_update(
+        old_release,
+        old_revision,
+        old_timestamp,
+        release,
+        revision,
+        committed_at,
+    )
     if revision == old_revision and new_version == old_version:
         print(f"atomgit-cli {old_version} already tracks {old_revision[:12]}")
         return 0
-    if committed_at < old_timestamp:
-        raise UpdateError(
-            f"refusing to move Formula from {old_revision[:12]} "
-            f"back to {revision[:12]}"
-        )
 
     updated = update_formula(formula, new_version, revision)
     write_atomically(args.formula, updated)
