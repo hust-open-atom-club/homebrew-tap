@@ -35,17 +35,72 @@ class UpdateFormulaTest(unittest.TestCase):
         self.assertEqual("0.7.3-0.20260821203630-db67692448b4", version)
 
     def test_current_snapshot_validates_revision(self) -> None:
-        version, revision, release, timestamp = update_formula.current_snapshot(
-            self.formula
+        version, revision, release, timestamp, sequence = (
+            update_formula.current_snapshot(self.formula)
         )
 
         self.assertEqual(self.version, version)
         self.assertEqual(self.revision, revision)
         self.assertEqual((0, 7, 2), release)
+        self.assertEqual(0, sequence)
         self.assertEqual(
             datetime(2026, 8, 21, 12, 36, 30, tzinfo=timezone.utc),
             timestamp,
         )
+
+    def test_same_second_commit_uses_monotonic_sequence(self) -> None:
+        timestamp = datetime(2026, 8, 21, 12, 36, 30, tzinfo=timezone.utc)
+        revision = "0123456789abcdef0123456789abcdef01234567"
+
+        sequence = update_formula.next_snapshot_sequence(
+            (0, 7, 2), timestamp, 0, (0, 7, 2), timestamp
+        )
+        version = update_formula.snapshot_version(
+            (0, 7, 2), revision, timestamp, sequence
+        )
+
+        self.assertEqual(1, sequence)
+        self.assertEqual(
+            "0.7.3-0.20260821123630.1-0123456789ab",
+            version,
+        )
+        self.assertGreater(
+            update_formula.snapshot_order((0, 7, 2), timestamp, sequence),
+            update_formula.snapshot_order((0, 7, 2), timestamp, 0),
+        )
+
+    def test_same_second_sequence_keeps_incrementing(self) -> None:
+        timestamp = datetime(2026, 8, 21, 12, 36, 30, tzinfo=timezone.utc)
+
+        sequence = update_formula.next_snapshot_sequence(
+            (0, 7, 2), timestamp, 1, (0, 7, 2), timestamp
+        )
+
+        self.assertEqual(2, sequence)
+
+    def test_newer_second_resets_sequence_without_regressing(self) -> None:
+        old_timestamp = datetime(2026, 8, 21, 12, 36, 30, tzinfo=timezone.utc)
+        new_timestamp = datetime(2026, 8, 21, 12, 36, 31, tzinfo=timezone.utc)
+
+        sequence = update_formula.next_snapshot_sequence(
+            (0, 7, 2), old_timestamp, 999, (0, 7, 2), new_timestamp
+        )
+
+        self.assertEqual(0, sequence)
+        self.assertGreater(
+            update_formula.snapshot_order((0, 7, 2), new_timestamp, sequence),
+            update_formula.snapshot_order((0, 7, 2), old_timestamp, 999),
+        )
+
+    def test_current_snapshot_restores_collision_sequence(self) -> None:
+        formula = self.formula.replace(
+            self.version,
+            "0.7.3-0.20260821123630.7-db67692448b4",
+        )
+
+        _, _, _, _, sequence = update_formula.current_snapshot(formula)
+
+        self.assertEqual(7, sequence)
 
     def test_validate_update_rejects_release_downgrade(self) -> None:
         old_timestamp = datetime(2026, 8, 21, tzinfo=timezone.utc)

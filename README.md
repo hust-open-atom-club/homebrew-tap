@@ -42,7 +42,8 @@ brew untap hust-open-atom-club/tap
 - Linux on ARM64 and x86-64
 
 The Formula pins an immutable AtomGit commit and builds `ag` from source. Its
-development version includes the upstream commit timestamp and abbreviated SHA.
+development version includes the upstream commit timestamp, a collision counter
+when needed, and the abbreviated SHA.
 
 ## Maintainers
 

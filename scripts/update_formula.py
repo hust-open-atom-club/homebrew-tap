@@ -23,7 +23,7 @@ RELEASE_API: Final = f"{API_ROOT}/releases/latest"
 COMMIT_API: Final = f"{API_ROOT}/commits/main"
 RELEASE_VERSION_RE: Final = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 SNAPSHOT_VERSION_RE: Final = re.compile(
-    r"^(\d+)\.(\d+)\.(\d+)-0\.(\d{14})-([0-9a-f]{12})$"
+    r"^(\d+)\.(\d+)\.(\d+)-0\.(\d{14})(?:\.(\d+))?-([0-9a-f]{12})$"
 )
 FORMULA_VERSION_RE: Final = re.compile(
     r'^(\s*version ")([^"]+)("\s*)$', re.MULTILINE
@@ -84,16 +84,25 @@ def latest_main_commit(url: str) -> tuple[str, datetime]:
 
 
 def snapshot_version(
-    release: tuple[int, int, int], commit: str, committed_at: datetime
+    release: tuple[int, int, int],
+    commit: str,
+    committed_at: datetime,
+    sequence: int = 0,
 ) -> str:
+    if sequence < 0:
+        raise UpdateError("snapshot sequence cannot be negative")
     major, minor, patch = release
     timestamp = committed_at.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S")
-    return f"{major}.{minor}.{patch + 1}-0.{timestamp}-{commit[:12]}"
+    sequence_suffix = f".{sequence}" if sequence else ""
+    return (
+        f"{major}.{minor}.{patch + 1}-0.{timestamp}"
+        f"{sequence_suffix}-{commit[:12]}"
+    )
 
 
 def current_snapshot(
     formula: str,
-) -> tuple[str, str, tuple[int, int, int], datetime]:
+) -> tuple[str, str, tuple[int, int, int], datetime, int]:
     version_matches = list(FORMULA_VERSION_RE.finditer(formula))
     revision_matches = list(FORMULA_REVISION_RE.finditer(formula))
     if len(version_matches) != 1:
@@ -113,7 +122,7 @@ def current_snapshot(
     match = SNAPSHOT_VERSION_RE.fullmatch(version)
     if match is None:
         raise UpdateError(f"unexpected Formula snapshot version: {version!r}")
-    if match.group(5) != revision[:12]:
+    if match.group(6) != revision[:12]:
         raise UpdateError("Formula version and Git revision do not match")
 
     major, minor, next_patch = (int(match.group(index)) for index in range(1, 4))
@@ -123,7 +132,27 @@ def current_snapshot(
     timestamp = datetime.strptime(match.group(4), "%Y%m%d%H%M%S").replace(
         tzinfo=timezone.utc
     )
-    return version, revision, release, timestamp
+    sequence = int(match.group(5) or 0)
+    return version, revision, release, timestamp, sequence
+
+
+def next_snapshot_sequence(
+    old_release: tuple[int, int, int],
+    old_timestamp: datetime,
+    old_sequence: int,
+    release: tuple[int, int, int],
+    committed_at: datetime,
+) -> int:
+    if release == old_release and committed_at == old_timestamp:
+        return old_sequence + 1
+    return 0
+
+
+def snapshot_order(
+    release: tuple[int, int, int], committed_at: datetime, sequence: int
+) -> tuple[int, int, int, datetime, int]:
+    major, minor, patch = release
+    return major, minor, patch + 1, committed_at, sequence
 
 
 def validate_update(
@@ -192,10 +221,15 @@ def main() -> int:
     args = parser.parse_args()
 
     formula = args.formula.read_text(encoding="utf-8")
-    old_version, old_revision, old_release, old_timestamp = current_snapshot(formula)
+    (
+        old_version,
+        old_revision,
+        old_release,
+        old_timestamp,
+        old_sequence,
+    ) = current_snapshot(formula)
     release = latest_release_version(args.release_api_url)
     revision, committed_at = latest_main_commit(args.commit_api_url)
-    new_version = snapshot_version(release, revision, committed_at)
 
     validate_update(
         old_release,
@@ -205,9 +239,24 @@ def main() -> int:
         revision,
         committed_at,
     )
-    if revision == old_revision and new_version == old_version:
+    if revision == old_revision and release == old_release:
         print(f"atomgit-cli {old_version} already tracks {old_revision[:12]}")
         return 0
+
+    sequence = next_snapshot_sequence(
+        old_release,
+        old_timestamp,
+        old_sequence,
+        release,
+        committed_at,
+    )
+    new_version = snapshot_version(release, revision, committed_at, sequence)
+    if snapshot_order(release, committed_at, sequence) <= snapshot_order(
+        old_release, old_timestamp, old_sequence
+    ):
+        raise UpdateError(
+            f"refusing to replace Formula version {old_version} with {new_version}"
+        )
 
     updated = update_formula(formula, new_version, revision)
     write_atomically(args.formula, updated)
