@@ -15,6 +15,13 @@ the fully qualified Formula name to distinguish it from the stable Core package:
 brew install hust-open-atom-club/tap/atomgit-cli
 ```
 
+> [!WARNING]
+> The Homebrew Core and tap Formulae cannot be installed at the same time.
+> Both install the same `ag` command, so take care to select the intended
+> Formula. Always use the fully qualified
+> `hust-open-atom-club/tap/atomgit-cli` name when installing, upgrading, or
+> uninstalling the development snapshot.
+
 The installed executable is named `ag`:
 
 ```bash
@@ -32,7 +39,7 @@ brew upgrade hust-open-atom-club/tap/atomgit-cli
 ## Uninstall
 
 ```bash
-brew uninstall atomgit-cli
+brew uninstall hust-open-atom-club/tap/atomgit-cli
 brew untap hust-open-atom-club/tap
 ```
 
