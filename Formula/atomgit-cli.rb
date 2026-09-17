@@ -2,8 +2,8 @@ class AtomgitCli < Formula
   desc "Command-line interface for AtomGit"
   homepage "https://atomgit.com/hust-open-atom-club/atomgit-cli"
   url "https://atomgit.com/hust-open-atom-club/atomgit-cli.git",
-      revision: "2498d9c5c74d2a0200af0588db7dad8d93cebd35"
-  version "0.7.4-0.20260917042818-2498d9c5c74d"
+      revision: "e2dfd6d98904464d1e2a30de6cd948d8e199f0e8"
+  version "0.7.4-0.20260917092913-e2dfd6d98904"
   license "MulanPSL-2.0"
 
   depends_on "go" => :build
