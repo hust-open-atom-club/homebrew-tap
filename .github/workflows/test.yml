@@ -31,4 +31,4 @@ jobs:
       - name: Test formula
         run: brew test hust-open-atom-club/tap/atomgit-cli
       - name: Verify executable
-        run: ag version
+        run: ag-cli version

@@ -17,16 +17,15 @@ brew install hust-open-atom-club/tap/atomgit-cli
 
 > [!WARNING]
 > The Homebrew Core and tap Formulae cannot be installed at the same time.
-> Both install the same `ag` command, so take care to select the intended
-> Formula. Always use the fully qualified
+> Take care to select the intended Formula. Always use the fully qualified
 > `hust-open-atom-club/tap/atomgit-cli` name when installing, upgrading, or
 > uninstalling the development snapshot.
 
-The installed executable is named `ag`:
+The installed executable is named `ag-cli`:
 
 ```bash
-ag version
-ag --help
+ag-cli version
+ag-cli --help
 ```
 
 ## Upgrade
@@ -48,7 +47,7 @@ brew untap hust-open-atom-club/tap
 - macOS on Apple Silicon and Intel
 - Linux on ARM64 and x86-64
 
-The Formula pins an immutable AtomGit commit and builds `ag` from source. Its
+The Formula pins an immutable AtomGit commit and builds `ag-cli` from source. Its
 development version includes the upstream commit timestamp, a collision counter
 when needed, and the abbreviated SHA.
 

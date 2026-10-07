@@ -2,8 +2,8 @@ class AtomgitCli < Formula
   desc "Command-line interface for AtomGit"
   homepage "https://atomgit.com/hust-open-atom-club/atomgit-cli"
   url "https://atomgit.com/hust-open-atom-club/atomgit-cli.git",
-      revision: "a911ae219f92937c0cd67b6c7d69df9c6e9c93b6"
-  version "0.7.4-0.20261007125833-a911ae219f92"
+      revision: "cc62eacd06c7838fb0536807c61a6273fa6a0a84"
+  version "0.7.4-0.20261007151920-cc62eacd06c7"
   license "MulanPSL-2.0"
 
   depends_on "go" => :build
@@ -28,15 +28,15 @@ class AtomgitCli < Formula
       -X atomgit.com/hust-open-atom-club/atomgit-cli/internal/version.Commit=#{stable.specs[:revision]}
       -X atomgit.com/hust-open-atom-club/atomgit-cli/internal/version.BuildDate=#{build_date}
     ]
-    system "go", "build", *std_go_args(ldflags:, output: bin/"ag"), "./cmd/ag"
+    system "go", "build", *std_go_args(ldflags:, output: bin/"ag-cli"), "./cmd/ag-cli"
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/ag version")
-    assert_match(/"buildDate":\s*"#{Regexp.escape(build_date)}"/, shell_output("#{bin}/ag version --json"))
+    assert_match version.to_s, shell_output("#{bin}/ag-cli version")
+    assert_match(/"buildDate":\s*"#{Regexp.escape(build_date)}"/, shell_output("#{bin}/ag-cli version --json"))
 
-    system bin/"ag", "alias", "set", "rv", "repo", "view"
-    aliases = shell_output("#{bin}/ag alias list")
+    system bin/"ag-cli", "alias", "set", "rv", "repo", "view"
+    aliases = shell_output("#{bin}/ag-cli alias list")
     assert_match "rv", aliases
     assert_match "repo view", aliases
   end
