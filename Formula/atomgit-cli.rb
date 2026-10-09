@@ -3,7 +3,7 @@ class AtomgitCli < Formula
   homepage "https://atomgit.com/hust-open-atom-club/atomgit-cli"
   url "https://atomgit.com/hust-open-atom-club/atomgit-cli.git",
       revision: "1b9de43514ff4f0588b06fdd4cff930fe74ce5f0"
-  version "0.7.4-0.20261008121044-1b9de43514ff"
+  version "0.7.5-0.20261008121044-1b9de43514ff"
   license "MulanPSL-2.0"
 
   depends_on "go" => :build
